@@ -14,6 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Fork of python-twitter 2.6 that provides a Search API.
+# This is a combination of comments 3 and 2 from
+# http://code.google.com/p/python-twitter/issues/detail?id=70
+
 '''A library that provides a python interface to the Twitter API'''
 
 __author__ = 'dewitt@google.com'
@@ -44,7 +48,7 @@ CHARACTER_LIMIT = 140
 
 class TwitterError(Exception):
   '''Base class for Twitter errors'''
-  
+
   @property
   def message(self):
     '''Returns the first argument used to construct this error.'''
@@ -66,6 +70,7 @@ class Status(object):
     status.source
     status.id
     status.text
+    status.location
     status.relative_created_at # read only
     status.user
   '''
@@ -74,6 +79,7 @@ class Status(object):
                favorited=None,
                id=None,
                text=None,
+               location=None,
                user=None,
                in_reply_to_screen_name=None,
                in_reply_to_user_id=None,
@@ -93,6 +99,7 @@ class Status(object):
       favorited: Whether this is a favorite of the authenticated user
       id: The unique id of this status message
       text: The text of this status message
+      location: the geolocation string associated with this message
       relative_created_at:
         A human readable string representing the posting time
       user:
@@ -105,6 +112,7 @@ class Status(object):
     self.favorited = favorited
     self.id = id
     self.text = text
+    self.location = location
     self.user = user
     self.now = now
     self.in_reply_to_screen_name = in_reply_to_screen_name
@@ -246,6 +254,25 @@ class Status(object):
   text = property(GetText, SetText,
                   doc='The text of this status message')
 
+  def GetLocation(self):
+    '''Get the geolocation associated with this status message
+
+    Returns:
+      The geolocation string of this status message.
+    '''
+    return self._location
+
+  def SetLocation(self, location):
+    '''Set the geolocation associated with this status message
+
+    Args:
+      location: The geolocation string of this status message
+    '''
+    self._location = location
+
+  location = property(GetLocation, SetLocation,
+                      doc='The geolocation string of this status message')
+
   def GetRelativeCreatedAt(self):
     '''Get a human redable string representing the posting time
 
@@ -334,6 +361,7 @@ class Status(object):
              self.created_at == other.created_at and \
              self.id == other.id and \
              self.text == other.text and \
+             self.location == other.location and \
              self.user == other.user and \
              self.in_reply_to_screen_name == other.in_reply_to_screen_name and \
              self.in_reply_to_user_id == other.in_reply_to_user_id and \
@@ -379,6 +407,8 @@ class Status(object):
       data['id'] = self.id
     if self.text:
       data['text'] = self.text
+    if self.location:
+      data['location'] = self.location
     if self.user:
       data['user'] = self.user.AsDict()
     if self.in_reply_to_screen_name:
@@ -412,6 +442,7 @@ class Status(object):
                   favorited=data.get('favorited', None),
                   id=data.get('id', None),
                   text=data.get('text', None),
+                  location=data.get('location', None),
                   in_reply_to_screen_name=data.get('in_reply_to_screen_name', None),
                   in_reply_to_user_id=data.get('in_reply_to_user_id', None),
                   in_reply_to_status_id=data.get('in_reply_to_status_id', None),
@@ -740,7 +771,7 @@ class User(object):
 
   def GetFriendsCount(self):
     '''Get the friend count for this user.
-    
+
     Returns:
       The number of users this user has befriended.
     '''
@@ -759,7 +790,7 @@ class User(object):
 
   def GetFollowersCount(self):
     '''Get the follower count for this user.
-    
+
     Returns:
       The number of users following this user.
     '''
@@ -778,7 +809,7 @@ class User(object):
 
   def GetStatusesCount(self):
     '''Get the number of status updates for this user.
-    
+
     Returns:
       The number of status updates for this user.
     '''
@@ -797,7 +828,7 @@ class User(object):
 
   def GetFavouritesCount(self):
     '''Get the number of favourites for this user.
-    
+
     Returns:
       The number of favourites for this user.
     '''
@@ -1323,10 +1354,92 @@ class Api(object):
     self._CheckForTwitterError(data)
     return [Status.NewFromJsonDict(x) for x in data]
 
+  def FilterPublicTimeline(self, term, since_id=None):
+		''' Filter the public twitter timeline by a given search term on
+			the local machine.
+		Args:
+			term:
+			 term to search by.
+			since_id:
+			 Returns only public statuses with an ID greater than (that is,
+		       more recent than) the specified ID. [Optional]
+
+		Returns:
+			A sequence of twitter.Status instances, one for each message
+			containing the term
+		'''
+		statuses = self.GetPublicTimeline(since_id)
+		results = []
+
+		for s in statuses:
+			if s.text.lower().find(term.lower()) != -1:
+				results.append(s)
+		return results
+
+  def GetSearch(self, term, geocode=None, since_id=None,
+		  per_page=15, page=1, lang="en", show_user="true", query_users=False):
+    ''' Return twitter search results for a given term.
+
+    Args:
+      term:
+       term to search by.
+      since_id:
+       Returns only public statuses with an ID greater than (that is,
+         more recent than) the specified ID. [Optional]
+      geocode:
+	   geolocation information in the form (latitude, longitude, radius) [Optional]
+      per_page:
+       number of results to return [Optional] default=15
+      page:
+       which page of search results to return
+      lang:
+       language for results [Optional] default english
+      show_user:
+       prefixes screen name in status
+      query_users:
+       If sets to False, then all users only have screen_name and
+       profile_image_url available. If sets to True, all information of users
+       are available, but it uses lots of request quota, one per status.
+    Returns:
+      A sequence of twitter.Status instances, one for each
+      message containing the term
+    '''
+    # Build request parameters
+    parameters = {}
+    if since_id:
+      parameters['since_id'] = since_id
+    if not term:
+      return []
+    parameters['show_user'] = show_user
+    parameters['lang'] = lang
+    parameters['rpp'] = per_page
+    parameters['page'] = page
+    if geocode is not None:
+      parameters['geocode'] = ','.join(map(str, geocode))
+
+    # Make and send requests
+    url = 'http://search.twitter.com/search.json'
+    json = self._FetchUrl(url,  parameters=parameters)
+    data = simplejson.loads(json)
+    self._CheckForTwitterError(data)
+
+    results = []
+    for x in data['results']:
+      temp = Status.NewFromJsonDict(x)
+      if query_users:
+        # Build user object with new request
+        temp.user = self.GetUser(urllib.quote(x['from_user']))
+      else:
+        temp.user = User(screen_name=x['from_user'], profile_image_url=x['profile_image_url'])
+      results.append(temp)
+
+    # Return built list of statuses
+    return results # [Status.NewFromJsonDict(x) for x in data['results']]
+
   def GetFriendsTimeline(self,
                          user=None,
                          count=None,
-                         since=None, 
+                         since=None,
                          since_id=None):
     '''Fetch the sequence of twitter.Status messages for a user's friends
 
@@ -1337,7 +1450,7 @@ class Api(object):
         Specifies the ID or screen name of the user for whom to return
         the friends_timeline.  If unspecified, the username and password
         must be set in the twitter.Api instance.  [Optional]
-      count: 
+      count:
         Specifies the number of statuses to retrieve. May not be
         greater than 200. [Optional]
       since:
@@ -1527,13 +1640,13 @@ class Api(object):
     results.append(self.PostUpdate(lines[-1], **kwargs))
     return results
 
-  def GetReplies(self, since=None, since_id=None, page=None): 
+  def GetReplies(self, since=None, since_id=None, page=None):
     '''Get a sequence of status messages representing the 20 most recent
     replies (status updates prefixed with @username) to the authenticating
     user.
 
     Args:
-      page: 
+      page:
       since:
         Narrows the returned results to just those statuses created
         after the specified HTTP-formatted date. [optional]
@@ -1574,7 +1687,7 @@ class Api(object):
     if not self._username:
       raise TwitterError("twitter.Api instance must be authenticated")
     if user:
-      url = 'http://twitter.com/statuses/friends/%s.json' % user 
+      url = 'http://twitter.com/statuses/friends/%s.json' % user
     else:
       url = 'http://twitter.com/statuses/friends.json'
     parameters = {}
@@ -1660,7 +1773,7 @@ class Api(object):
     if since_id:
       parameters['since_id'] = since_id
     if page:
-      parameters['page'] = page 
+      parameters['page'] = page
     json = self._FetchUrl(url, parameters=parameters)
     data = simplejson.loads(json)
     self._CheckForTwitterError(data)
@@ -1988,10 +2101,10 @@ class Api(object):
 
     Args:
       url: The URL to retrieve
-      post_data: 
+      post_data:
         A dict of (str, unicode) key/value pairs.  If set, POST will be used.
       parameters:
-        A dict whose key/value pairs should encoded and added 
+        A dict whose key/value pairs should encoded and added
         to the query string. [OPTIONAL]
       no_cache: If true, overrides the cache on the current request
 
@@ -2121,7 +2234,7 @@ class _FileCache(object):
         hashed_key = md5(key).hexdigest()
     except TypeError:
         hashed_key = md5.new(key).hexdigest()
-        
+
     return os.path.join(self._root_directory,
                         self._GetPrefix(hashed_key),
                         hashed_key)
