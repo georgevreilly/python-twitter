@@ -1355,29 +1355,29 @@ class Api(object):
     return [Status.NewFromJsonDict(x) for x in data]
 
   def FilterPublicTimeline(self, term, since_id=None):
-		''' Filter the public twitter timeline by a given search term on
-			the local machine.
-		Args:
-			term:
-			 term to search by.
-			since_id:
-			 Returns only public statuses with an ID greater than (that is,
-		       more recent than) the specified ID. [Optional]
+        ''' Filter the public twitter timeline by a given search term on
+            the local machine.
+        Args:
+            term:
+             term to search by.
+            since_id:
+             Returns only public statuses with an ID greater than (that is,
+               more recent than) the specified ID. [Optional]
 
-		Returns:
-			A sequence of twitter.Status instances, one for each message
-			containing the term
-		'''
-		statuses = self.GetPublicTimeline(since_id)
-		results = []
+        Returns:
+            A sequence of twitter.Status instances, one for each message
+            containing the term
+        '''
+        statuses = self.GetPublicTimeline(since_id)
+        results = []
 
-		for s in statuses:
-			if s.text.lower().find(term.lower()) != -1:
-				results.append(s)
-		return results
+        for s in statuses:
+            if s.text.lower().find(term.lower()) != -1:
+                results.append(s)
+        return results
 
   def GetSearch(self, term, geocode=None, since_id=None,
-		  per_page=15, page=1, lang="en", show_user="true", query_users=False):
+          per_page=15, page=1, lang="en", show_user="true", query_users=False):
     ''' Return twitter search results for a given term.
 
     Args:
@@ -1387,7 +1387,7 @@ class Api(object):
        Returns only public statuses with an ID greater than (that is,
          more recent than) the specified ID. [Optional]
       geocode:
-	   geolocation information in the form (latitude, longitude, radius) [Optional]
+       geolocation information in the form (latitude, longitude, radius) [Optional]
       per_page:
        number of results to return [Optional] default=15
       page:
@@ -1410,6 +1410,7 @@ class Api(object):
       parameters['since_id'] = since_id
     if not term:
       return []
+    parameters['q'] = term
     parameters['show_user'] = show_user
     parameters['lang'] = lang
     parameters['rpp'] = per_page
